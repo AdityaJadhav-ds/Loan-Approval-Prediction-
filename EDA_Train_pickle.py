@@ -19,7 +19,7 @@ warnings.filterwarnings('ignore')
 conn = pymysql.connect(
     host = 'localhost',
     user = 'root', # Give your own username
-    password = 'pratik', # Give your own DB password
+    password = 'aditya524', # Give your own DB password
     database = 'loan_db' # Give your own DB name
 )
 
@@ -662,4 +662,5 @@ print('Testing F1 Score :', np.round(metrics.f1_score(y_test, y_pred), 3))
 import pickle
 with open('loan_approval_model.pkl', 'wb') as f:
     pickle.dump((model, scaler, encoders), f)
+
 
