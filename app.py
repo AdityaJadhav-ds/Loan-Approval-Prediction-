@@ -23,7 +23,7 @@ ALLOWED_TERM_OPTIONS = [12, 36, 60, 120, 180, 240, 300, 360, 480]
 # ---------------------------
 st.set_page_config(page_title=APP_TITLE, page_icon="🏦", layout="wide")
 
-_sty = f"""
+_sty = """
 <style>
 /* Root app */
 .stApp {{
@@ -433,3 +433,4 @@ st.markdown(f"""
   <span style="font-size:12px">v1.3 • © {datetime.utcnow().year} Loan Approval ML</span>
 </div>
 """, unsafe_allow_html=True)
+
