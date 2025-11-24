@@ -1,10 +1,9 @@
-
+# app.py
 import streamlit as st
 import pandas as pd
 import numpy as np
 import pickle
 import joblib
-import base64
 import traceback
 from pathlib import Path
 from datetime import datetime
@@ -19,25 +18,58 @@ LINKEDIN_URL = "https://www.linkedin.com/in/aditya-jadhav-6775702b4"
 ALLOWED_TERM_OPTIONS = [12, 36, 60, 120, 180, 240, 300, 360, 480]
 
 # ---------------------------
-# Page setup & CSS
+# Page setup & CSS (improved contrast)
 # ---------------------------
 st.set_page_config(page_title="Loan Approval - Aditya Jadhav", page_icon="🏦", layout="wide")
+
 st.markdown(
     """
     <style>
-    .stApp { background: linear-gradient(180deg,#fbfdff,#eef4f8); color:#0b3556; font-family: Inter, system-ui, -apple-system; }
-    h1 { text-align:center; color:#0b3556; font-weight:800; }
-    .card { background:#fff; padding:18px; border-radius:12px; box-shadow:0 10px 30px rgba(2,6,23,0.06); }
-    .control-label { font-weight:600; color:#0b3556; }
-    [data-testid="stSidebar"] { background: #0b1220; color:#e6eef6; }
-    [data-testid="stSidebar"] a { color:#7dd3fc !important; }
-    .result-card { background: linear-gradient(90deg,#ecfeff,#f0f9ff); padding:18px; border-radius:12px; text-align:center; box-shadow:0 10px 30px rgba(2,6,23,0.04); }
-    .success-card { border-left: 6px solid #10b981; }
-    .fail-card { border-left: 6px solid #ef4444; }
-    .muted { color:#6b7280; }
+    /* App background and primary text (high contrast) */
+    .stApp {
+        background: linear-gradient(180deg,#fbfdff,#eef4f8);
+        color: #052038;
+        font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+    }
+
+    /* Headings */
+    .stApp h1, .stApp h2, .stApp h3, .stApp h4 {
+        color: #052038 !important;
+    }
+
+    /* Card-like containers */
+    .card {
+        background: #ffffff;
+        padding: 18px;
+        border-radius: 12px;
+        box-shadow: 0 8px 24px rgba(2,6,23,0.06);
+    }
+
+    /* Sidebar contrast */
+    [data-testid="stSidebar"] {
+        background: linear-gradient(180deg,#061421,#082534);
+        color: #e6f6ff;
+    }
+    [data-testid="stSidebar"] .css-1d391kg { color: #e6f6ff; } /* labels */
+    [data-testid="stSidebar"] a { color: #7dd3fc !important; }
+
+    /* Result cards */
+    .result-card { 
+        padding:16px; 
+        border-radius:10px;
+        box-shadow: 0 6px 20px rgba(2,6,23,0.04);
+        text-align:center;
+    }
+    .success-card { background: linear-gradient(90deg,#ecfdf5,#f0f9ff); border-left:6px solid #10b981; }
+    .fail-card { background: linear-gradient(90deg,#fff1f0,#fdf2f8); border-left:6px solid #ef4444; }
+
+    .muted { color:#475569; }
     .small { font-size:13px; color:#475569; }
     .dev-footer { text-align:center; margin-top:18px; color:#475569; font-size:13px; }
-    .download-button-wrap { margin-top:10px; }
+
+    /* Improve table header contrast */
+    .stDataFrame thead th { background-color: #f1f5f9 !important; color:#052038 !important; }
+
     @media (max-width: 900px) {
         h1 { font-size: 1.5rem; }
     }
@@ -49,13 +81,18 @@ st.markdown(
 # ---------------------------
 # Utilities
 # ---------------------------
-def try_load_model(paths=MODEL_PATHS):
+def _try_load_model_from_path(pth: Path):
+    """Helper to attempt load with joblib then pickle."""
+    try:
+        return joblib.load(pth)
+    except Exception:
+        with open(pth, "rb") as f:
+            return pickle.load(f)
+
+@st.cache_resource(show_spinner=False)
+def load_model(paths=MODEL_PATHS):
     """
     Try loading model from candidate paths using joblib or pickle.
-    Supports:
-      - plain model (estimator)
-      - tuple e.g. (model, scaler, encoders) or (pipeline, sklearn_version)
-      - dict {'model':..., 'preprocessor':..., 'encoders':..., 'metadata':...}
     Returns: dict with keys: model, preprocessor, scaler, encoders, metadata
     """
     last_err = None
@@ -64,23 +101,15 @@ def try_load_model(paths=MODEL_PATHS):
         if not pth.exists():
             continue
         try:
-            # try joblib first (handles sklearn objects well)
-            try:
-                obj = joblib.load(pth)
-            except Exception:
-                with open(pth, "rb") as f:
-                    obj = pickle.load(f)
-
+            obj = _try_load_model_from_path(pth)
             result = {"model": None, "preprocessor": None, "scaler": None, "encoders": None, "metadata": {}}
             if isinstance(obj, dict):
-                # common saved dict structure
                 result["model"] = obj.get("model") or obj.get("estimator")
                 result["preprocessor"] = obj.get("preprocessor")
                 result["scaler"] = obj.get("scaler")
                 result["encoders"] = obj.get("encoders") or obj.get("label_encoders")
                 result["metadata"] = obj.get("metadata", {})
             elif isinstance(obj, tuple):
-                # some people save (model, scaler, encoders) or (model, sklearn_version)
                 if len(obj) == 3:
                     result["model"], result["scaler"], result["encoders"] = obj
                 elif len(obj) == 2:
@@ -88,89 +117,80 @@ def try_load_model(paths=MODEL_PATHS):
                 else:
                     result["model"] = obj[0]
             else:
-                # assume plain model/pipeline
                 result["model"] = obj
             return result
         except Exception as e:
             last_err = e
             continue
-
-    # if none found, raise a helpful message
     raise FileNotFoundError(f"No model found in paths {paths}. Last error: {last_err}")
-
 
 @st.cache_data(show_spinner=False)
 def read_csv_safe(file) -> pd.DataFrame:
     return pd.read_csv(file)
 
-
 def df_to_download_bytes(df: pd.DataFrame):
     csv = df.to_csv(index=False).encode()
     return csv
 
-
 def safe_encode_inputs(df: pd.DataFrame, encoders):
-    """
-    If encoders provided, attempt to transform columns present.
-    Encoders expected as dict: {col: encoder_object}
-    """
     if not encoders:
         return df
     df_copy = df.copy()
     for col, enc in encoders.items():
         if col in df_copy.columns:
             try:
-                # ensure string for categories
                 df_copy[col] = enc.transform(df_copy[col].astype(str))
             except Exception:
-                # maybe encoder expects numpy array shape
                 try:
                     df_copy[col] = enc.transform(df_copy[col])
                 except Exception:
-                    # leave as-is if transform fails
                     pass
     return df_copy
 
 # ---------------------------
-# Load model
+# Load model (cached)
 # ---------------------------
 with st.spinner("Loading model..."):
     try:
-        bundle = try_load_model()
+        bundle = load_model()
         model = bundle.get("model")
         preprocessor = bundle.get("preprocessor")
         scaler = bundle.get("scaler")
         encoders = bundle.get("encoders")
         metadata = bundle.get("metadata", {})
-        sklearn_version = metadata.get("sklearn_version", "unknown")
-    except FileNotFoundError as e:
-        st.error("⚠️ Model not found. Upload `loan_approval_model.pkl` (or joblib) to the app folder.")
+        sklearn_version = metadata.get("sklearn_version", None)
+    except FileNotFoundError:
+        st.sidebar.error("⚠️ Model not found. Upload `loan_approval_model.pkl` (or joblib) to the app folder.")
         st.stop()
     except Exception as e:
-        st.error("❌ Failed to load model - see details.")
-        st.exception(e)
+        st.sidebar.error("❌ Failed to load model. Check model file.")
+        st.sidebar.exception(e)
         st.stop()
 
 # ---------------------------
-# Header
+# Top header (no model line below heading)
 # ---------------------------
-st.title(APP_TITLE)
-st.markdown(f"<div class='small muted' style='text-align:center'>Model: <b>{getattr(model,'__class__', type(model)).__name__}</b> • scikit-learn: {sklearn_version}</div>", unsafe_allow_html=True)
-st.write("---")
+st.markdown(f"<div style='text-align:center'><h1 style='margin-bottom:6px'>{APP_TITLE}</h1></div>", unsafe_allow_html=True)
+st.write("")  # small spacer
 
 # ---------------------------
-# Sidebar controls
+# Sidebar (controls + developer info hidden)
 # ---------------------------
 with st.sidebar:
-    st.markdown("<h3 style='color:#e6eef6'>Controls</h3>", unsafe_allow_html=True)
-    mode = st.radio("Mode", ("Single Input", "Batch CSV"), index=0)
+    st.markdown("<div style='padding:6px 0'><h3 style='margin:0; color: #e6f6ff'>Controls</h3></div>", unsafe_allow_html=True)
+    input_mode = st.radio("Input mode", ("Single", "Batch"), index=0)
     st.markdown("---")
-    st.markdown("<div style='color:#e6eef6'><b>Developer</b></div>", unsafe_allow_html=True)
-    st.markdown(f"<a href='{GITHUB_URL}' target='_blank'>GitHub</a> • <a href='{LINKEDIN_URL}' target='_blank'>LinkedIn</a>", unsafe_allow_html=True)
+    st.markdown("**Developer / Links**")
+    st.markdown(f"[GitHub]({GITHUB_URL}) • [LinkedIn]({LINKEDIN_URL})")
+    # Model metadata in a collapsible expander (hidden by default)
+    with st.expander("Model (developer)", expanded=False):
+        st.write("Model class:", getattr(model, "__class__", type(model)).__name__)
+        if sklearn_version:
+            st.write("scikit-learn version:", sklearn_version)
+        st.json(metadata)
     st.markdown("---")
     st.caption("Tip: For batch predictions upload a CSV with the exact column names used in training (see sample).")
     if st.button("Download sample CSV"):
-        # create sample row and provide a download
         sample = pd.DataFrame([{
             "Gender":"Male","Married":"Yes","Dependents":"0","Education":"Graduate","Self_Employed":"No",
             "ApplicantIncome":5000,"CoapplicantIncome":0,"LoanAmount":120,"Loan_Amount_Term":360,"Credit_History":1,"Property_Area":"Urban"
@@ -178,43 +198,40 @@ with st.sidebar:
         st.download_button("Download sample.csv", data=df_to_download_bytes(sample), file_name="loan_sample_input.csv", mime="text/csv")
 
 # ---------------------------
-# Input form area
+# Main: Input area inside a card
 # ---------------------------
+st.markdown("<div class='card'>", unsafe_allow_html=True)
 st.markdown("## Applicant details")
-st.markdown("Fill applicant information below. Hover over labels for tooltips.")
+st.markdown("Fill applicant information below. Use the form and click Predict.")
 
-def single_input_form():
-    col1, col2 = st.columns([1,1])
-    with col1:
-        gender = st.selectbox("Gender", ["Male","Female"], help="Applicant gender")
-        married = st.selectbox("Married", ["Yes","No"], help="Marital status")
-        dependents = st.selectbox("Dependents", ["0","1","2","3+"], help="Number of dependents")
-        education = st.selectbox("Education", ["Graduate","Not Graduate"], help="Education level")
-        self_employed = st.selectbox("Self Employed", ["No","Yes"], help="Is the applicant self-employed?")
-    with col2:
+# Use a Streamlit form for clean UX
+with st.form(key="single_form", clear_on_submit=False):
+    cols = st.columns([1, 1])
+    with cols[0]:
+        gender = st.selectbox("Gender", ["Male", "Female"], index=0, help="Applicant gender")
+        married = st.selectbox("Married", ["Yes", "No"], index=0, help="Marital status")
+        dependents = st.selectbox("Dependents", ["0", "1", "2", "3+"], index=0, help="Number of dependents")
+        education = st.selectbox("Education", ["Graduate", "Not Graduate"], index=0, help="Education level")
+        self_employed = st.selectbox("Self Employed", ["No", "Yes"], index=0, help="Is the applicant self-employed?")
+    with cols[1]:
         applicant_income = st.number_input("Applicant Income (₹)", min_value=0, value=5000, step=500, help="Monthly applicant income")
         coapplicant_income = st.number_input("Coapplicant Income (₹)", min_value=0, value=0, step=500, help="Monthly coapplicant income")
         loan_amount = st.number_input("Loan Amount (₹)", min_value=0, value=120, step=1, help="Requested loan amount (in thousands or same units as trained model)")
         loan_amount_term = st.selectbox("Loan Amount Term (months)", ALLOWED_TERM_OPTIONS, index=7, help="Repayment term in months")
-        credit_history = st.selectbox("Credit History (1 = good)", [1,0], index=0, help="1 indicates good credit history")
-        property_area = st.selectbox("Property Area", ["Urban","Semiurban","Rural"], index=0, help="Property area type")
-    row = {
-        "Gender": gender, "Married": married, "Dependents": dependents, "Education": education,
-        "Self_Employed": self_employed, "ApplicantIncome": applicant_income, "CoapplicantIncome": coapplicant_income,
-        "LoanAmount": loan_amount, "Loan_Amount_Term": loan_amount_term, "Credit_History": credit_history,
-        "Property_Area": property_area
-    }
-    return pd.DataFrame([row])
+        credit_history = st.selectbox("Credit History (1 = good)", [1, 0], index=0, help="1 indicates good credit history")
+        property_area = st.selectbox("Property Area", ["Urban", "Semiurban", "Rural"], index=0, help="Property area type")
 
-# Choose input mode
-if st.sidebar.radio("Choose input", ["Single", "Batch"]) == "Batch":
-    mode = "Batch CSV"
-else:
-    mode = "Single Input"
+    submitted = st.form_submit_button("🔮 Predict Loan Approval")
 
-uploaded = None
-if mode == "Batch CSV":
-    uploaded = st.file_uploader("Upload CSV file for batch predictions", type=["csv"])
+st.markdown("</div>", unsafe_allow_html=True)
+st.write("")  # spacer
+
+# ---------------------------
+# Batch upload flow
+# ---------------------------
+input_df = None
+if input_mode == "Batch":
+    uploaded = st.file_uploader("Upload CSV for batch predictions", type=["csv"])
     if uploaded is not None:
         try:
             input_df = read_csv_safe(uploaded)
@@ -226,54 +243,58 @@ if mode == "Batch CSV":
             st.exception(e)
             st.stop()
 else:
-    input_df = single_input_form()
+    # create single-row DataFrame from form values
+    input_df = pd.DataFrame([{
+        "Gender": gender, "Married": married, "Dependents": dependents, "Education": education,
+        "Self_Employed": self_employed, "ApplicantIncome": applicant_income, "CoapplicantIncome": coapplicant_income,
+        "LoanAmount": loan_amount, "Loan_Amount_Term": loan_amount_term, "Credit_History": credit_history,
+        "Property_Area": property_area
+    }])
     if st.checkbox("Show input data"):
         st.dataframe(input_df)
 
 st.write("---")
 
 # ---------------------------
-# Prepare for prediction
+# Prepare & predict helpers
 # ---------------------------
 def prepare_for_model(df: pd.DataFrame):
     X = df.copy()
-    # If encoders exist, attempt to transform (non-destructive)
     X = safe_encode_inputs(X, encoders)
-    # If scaler exists, attempt to scale numeric columns (non-destructive)
     if scaler is not None:
         try:
-            # attempt to scale only numeric cols used during training
             numeric_cols = X.select_dtypes(include=[np.number]).columns
             if len(numeric_cols) > 0:
                 X_num = pd.DataFrame(scaler.transform(X[numeric_cols]), columns=numeric_cols, index=X.index)
                 X.update(X_num)
         except Exception:
-            # fallback: scaler may be part of pipeline only, so ignore
             pass
-    # If preprocessor pipeline exists, let it transform
     if preprocessor is not None:
         try:
             X_trans = preprocessor.transform(X)
-            return X_trans, True  # transformed flag
+            return X_trans, True
         except Exception:
-            # if transform fails, continue with X as-is
             pass
     return X, False
 
-# ---------------------------
-# Run prediction
-# ---------------------------
-predict_btn = st.button("🔮 Predict Loan Approval", type="primary")
+def build_results_df(input_df, preds, probs=None):
+    results = input_df.copy().reset_index(drop=True)
+    results["Loan_Approved"] = np.where(np.asarray(preds).astype(int) == 1, "Approved", "Rejected")
+    if probs is not None:
+        results["Approval_Confidence"] = (probs * 100).round(2)
+    return results
 
-if predict_btn:
+# ---------------------------
+# Run prediction (single or batch)
+# ---------------------------
+if (input_mode == "Batch" and 'uploaded' in locals() and uploaded is not None and st.button("Run Batch Predictions")) or (input_mode == "Single" and submitted):
     with st.spinner("Predicting..."):
         try:
             X_ready, transformed = prepare_for_model(input_df)
-            # get probabilities if available
+            # predict
             if hasattr(model, "predict_proba"):
                 probs = model.predict_proba(X_ready)
                 preds = model.predict(X_ready)
-                # get positive class index
                 if probs.shape[1] == 2:
                     positive_probs = probs[:, 1]
                 else:
@@ -282,35 +303,40 @@ if predict_btn:
                 preds = model.predict(X_ready)
                 positive_probs = None
 
-            # results frame
-            results = input_df.copy().reset_index(drop=True)
-            results["Loan_Approved"] = np.where(np.asarray(preds).astype(int) == 1, "Approved", "Rejected")
-            if positive_probs is not None:
-                results["Approval_Confidence"] = (positive_probs * 100).round(2)
+            results = build_results_df(input_df, preds, positive_probs)
 
-            # display a nice result card for single input
+            # Single input: show big, clear result
             if len(results) == 1:
-                status = results.loc[0, "Loan_Approved"]
-                confidence = results.loc[0, "Approval_Confidence"] if "Approval_Confidence" in results.columns else None
+                row = results.loc[0]
+                status = row["Loan_Approved"]
+                confidence = row.get("Approval_Confidence", None)
                 if status == "Approved":
-                    st.markdown(f"<div class='result-card success-card'><h2>✅ Loan Approved</h2><p class='muted'>Confidence: <b>{confidence}%</b></p></div>", unsafe_allow_html=True)
+                    # Metric + result card
+                    st.markdown(f"<div class='result-card success-card'><h2>✅ Loan Approved</h2><p class='muted'>Confidence: <b>{confidence if confidence is not None else '—'}%</b></p></div>", unsafe_allow_html=True)
                 else:
                     st.markdown(f"<div class='result-card fail-card'><h2>❌ Loan Rejected</h2><p class='muted'>Confidence: <b>{confidence if confidence is not None else '—'}%</b></p></div>", unsafe_allow_html=True)
+                # Show a compact metrics row for quick overview
+                col1, col2, col3 = st.columns([1,1,1])
+                with col1:
+                    st.metric("Prediction", status)
+                with col2:
+                    st.metric("Confidence", f"{confidence}%" if confidence is not None else "—")
+                with col3:
+                    st.metric("Model", getattr(model, "__class__", type(model)).__name__)
             else:
-                # batch summary
+                # Batch summary
                 approved_count = (results["Loan_Approved"] == "Approved").sum()
                 total = len(results)
-                st.markdown(f"<div class='result-card'><h2>Batch prediction completed</h2><p class='muted'>Approved: <b>{approved_count}</b> / {total}</p></div>", unsafe_allow_html=True)
+                st.markdown(f"<div class='result-card'><h3>Batch prediction completed</h3><p class='muted'>Approved: <b>{approved_count}</b> / {total}</p></div>", unsafe_allow_html=True)
 
-            # show table & actions
+            # Show detailed table and download
             st.markdown("### Detailed results")
             st.dataframe(results)
 
-            # allow download
             csv_bytes = df_to_download_bytes(results)
             st.download_button("⬇️ Download predictions (CSV)", data=csv_bytes, file_name=f"loan_predictions_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.csv", mime="text/csv")
 
-            # small explainability: feature importances or coefficients
+            # Try showing approximate feature importances (if available)
             try:
                 fi = None
                 if hasattr(model, "feature_importances_"):
@@ -319,30 +345,26 @@ if predict_btn:
                     fi = np.abs(np.asarray(model.coef_)).ravel()
 
                 if fi is not None:
-                    # try to discover feature names
                     try:
-                        if transformed:
-                            # preprocessor may provide feature names
+                        if transformed and preprocessor is not None:
                             feature_names = preprocessor.get_feature_names_out()
                         else:
                             feature_names = input_df.columns
                     except Exception:
                         feature_names = input_df.columns
 
-                    # align length
                     if len(feature_names) == len(fi):
                         fi_df = pd.DataFrame({"feature": feature_names, "importance": fi})
                         fi_df = fi_df.sort_values("importance", ascending=False).head(10).reset_index(drop=True)
                         st.markdown("---")
                         st.markdown("#### Top feature importances (approx)")
-                        st.table(fi_df.style.hide_index())
+                        st.table(fi_df)
             except Exception:
-                # ignore explainability errors
                 pass
 
         except Exception as e:
-            st.error("Prediction failed. See details below.")
-            st.exception(traceback.format_exc())
+            st.error("Prediction failed. See details in the developer panel (sidebar).")
+            st.sidebar.exception(traceback.format_exc())
 
 # ---------------------------
 # Footer
@@ -359,7 +381,3 @@ st.markdown(
 """,
     unsafe_allow_html=True,
 )
-
-# ---------------------------
-# End
-# ---------------------------
