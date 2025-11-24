@@ -1,24 +1,28 @@
 <div align="center">
 
 # 🏦 Loan Approval Prediction  
-### **An intelligent ML-powered system to assist loan decisions.**
-
-<!-- BADGES -->
-<img src="https://img.shields.io/badge/Python-3.10+-blue?logo=python&style=flat-square" />
-<img src="https://img.shields.io/badge/Streamlit-1.20+-ff4b4b?logo=streamlit&style=flat-square" />
-<img src="https://img.shields.io/badge/Scikit--Learn-ML Model-f7931e?logo=scikit-learn&style=flat-square" />
-<img src="https://img.shields.io/badge/Status-Production Ready-brightgreen?style=flat-square" />
-
-<div align="center">
+### <i>An intelligent ML-powered system to assist loan decisions.</i>
 
 <br>
 
-<!-- LIVE DEMO BUTTON -->
+<!-- BADGES (Premium Look) -->
+<img src="https://img.shields.io/badge/Python-3.10+-3776AB?logo=python&logoColor=white&style=for-the-badge" />
+<img src="https://img.shields.io/badge/Streamlit-1.20+-FF4B4B?logo=streamlit&logoColor=white&style=for-the-badge" />
+<img src="https://img.shields.io/badge/Scikit--Learn-ML%20Model-F7931E?logo=scikit-learn&logoColor=white&style=for-the-badge" />
+<img src="https://img.shields.io/badge/Status-Production%20Ready-brightgreen?style=for-the-badge" />
+
+<br><br>
+
+<!-- LIVE DEMO IN "Live Demo :" STYLE -->
+<h3><b>Live Demo :</b></h3>
+
 <a href="https://loan-approval-prediction-ml-aj524.streamlit.app/#loan-approval-prediction" target="_blank">
-  <img src="https://img.shields.io/badge/🚀 Live Demo-App-orange?style=for-the-badge" />
+  <img src="https://img.shields.io/badge/🚀-Open%20App-orange?style=for-the-badge&logo=rocket" />
 </a>
 
 <br><br>
+
+</div>
 
 
 ---
