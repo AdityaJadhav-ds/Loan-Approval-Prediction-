@@ -2,8 +2,8 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import pickle
 import joblib
+import pickle
 import traceback
 from pathlib import Path
 from datetime import datetime
@@ -16,120 +16,110 @@ MODEL_PATHS = ["loan_approval_model.pkl", "loan_approval_model.joblib", "model/l
 GITHUB_URL = "https://github.com/AdityaJadhav-ds"
 LINKEDIN_URL = "https://www.linkedin.com/in/aditya-jadhav-6775702b4"
 ALLOWED_TERM_OPTIONS = [12, 36, 60, 120, 180, 240, 300, 360, 480]
-# Path to uploaded screenshot (for developer debugging)
-SCREENSHOT_PATH = "/mnt/data/2025-11-24T08-17-23.628Z.png"
+
+# Uploaded screenshot path (developer)
+SCREENSHOT_PATH = "/mnt/data/2025-11-24T08-21-25.388Z.png"
 
 # ---------------------------
-# Page setup & CSS (fix input visibility)
+# Page setup & CSS (final fixes)
 # ---------------------------
 st.set_page_config(page_title="Loan Approval - Aditya Jadhav", page_icon="🏦", layout="wide")
 
 st.markdown(
     """
     <style>
-    /* Base app colors & fonts */
-    .stApp {
-        background: linear-gradient(180deg,#fbfdff,#eef4f8);
-        color: #052038;
-        font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
-    }
+    /* Base app */
+    .stApp { background: linear-gradient(180deg,#fbfdff,#eef4f8); color: #000000; font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial; }
 
     /* Headings */
-    .stApp h1, .stApp h2, .stApp h3, .stApp h4 {
-        color: #052038 !important;
-    }
+    .stApp h1, .stApp h2, .stApp h3, .stApp h4 { color: #000000 !important; }
 
-    /* Card containers */
-    .card {
-        background: #ffffff;
-        padding: 18px;
-        border-radius: 12px;
-        box-shadow: 0 8px 24px rgba(2,6,23,0.06);
-    }
+    /* Card */
+    .card { background: #ffffff; padding: 18px; border-radius: 12px; box-shadow: 0 8px 24px rgba(2,6,23,0.06); }
 
-    /* Sidebar contrast */
-    [data-testid="stSidebar"] {
-        background: linear-gradient(180deg,#061421,#082534);
-        color: #e6f6ff;
-        padding: 20px;
-    }
-    [data-testid="stSidebar"] a { color: #7dd3fc !important; }
+    /* Sidebar */
+    [data-testid="stSidebar"] { background: linear-gradient(180deg,#061421,#082534); color: #e6f6ff; padding: 20px; }
+    [data-testid="stSidebar"] a { color: #7dd3fc !important; text-decoration: none; }
+
+    /* Footer */
+    .dev-footer { text-align:center; margin-top:18px; color:#475569; font-size:13px; }
 
     /* Result cards */
-    .result-card { 
-        padding:16px; 
-        border-radius:10px;
-        box-shadow: 0 6px 20px rgba(2,6,23,0.04);
-        text-align:center;
-    }
+    .result-card { padding:16px; border-radius:10px; box-shadow: 0 6px 20px rgba(2,6,23,0.04); text-align:center; }
     .success-card { background: linear-gradient(90deg,#ecfdf5,#f0f9ff); border-left:6px solid #10b981; }
     .fail-card { background: linear-gradient(90deg,#fff1f0,#fdf2f8); border-left:6px solid #ef4444; }
 
     .muted { color:#475569; }
     .small { font-size:13px; color:#475569; }
-    .dev-footer { text-align:center; margin-top:18px; color:#475569; font-size:13px; }
 
-    /* Improve table header contrast */
-    .stDataFrame thead th { background-color: #f1f5f9 !important; color:#052038 !important; }
-
-    /* >>> INPUT WIDGET FIXES: make widget background light and text dark <<<
-       These selectors are broad to override streamlit theme / cloud styles.
-       They force readable backgrounds and dark text for select, inputs and dropdowns.
+    /* -----------------------
+       INPUT & LABEL FIXES
+       -----------------------
+       Goal:
+       - Prevent the label text from becoming blue selection chips
+       - Force all labels and widget text to be black
+       - Keep the widget boxes' visual style but ensure text is readable
     */
+
+    /* Force label color to black */
+    label, .stText, .stMarkdown, .stMetricLabel {
+        color: #000000 !important;
+        -webkit-text-fill-color: #000000 !important;
+    }
+
+    /* Prevent blue selection "chip" look: make ::selection neutral */
+    ::selection { background: rgba(0,0,0,0.06); color: #000000; }
+    ::-moz-selection { background: rgba(0,0,0,0.06); color: #000000; }
+
+    /* Input element text color overrides (keeps box background but makes text black) */
     .stApp input, .stApp select, .stApp textarea,
     .stApp [role="combobox"], .stApp [role="listbox"], .stApp [data-baseweb="select"] {
-        background-color: #ffffff !important;
-        color: #052038 !important;
+        color: #000000 !important;
+        -webkit-text-fill-color: #000000 !important;
+    }
+
+    /* Option entries in dropdowns */
+    option, select option {
+        color: #000000 !important;
+        background-color: inherit !important;
+    }
+
+    /* Number inputs +/- controls (ensure text is black) */
+    input[type="number"] { color: #000000 !important; -webkit-text-fill-color: #000000 !important; }
+
+    /* Make widget containers slightly translucent but keep box color (do NOT make black) */
+    div[class*="stSelectbox"], div[class*="stNumberInput"], div[class*="stTextInput"], div[class*="stMultiSelect"], div[class*="stSlider"] {
+        background-color: rgba(0,0,0,0.06) !important;
         border-radius: 8px !important;
-        padding: 8px !important;
-        border: 1px solid rgba(2,6,23,0.06) !important;
+        padding: 6px !important;
     }
 
-    /* For the numeric inputs that show +/- controls */
-    input[type="number"] {
-        background-color: #ffffff !important;
-        color: #052038 !important;
-    }
-
-    /* Streamlit often wraps widgets inside divs with classes - make them readable too */
-    div[class*="stSelectbox"], div[class*="stNumberInput"], div[class*="stTextInput"],
-    div[class*="stMultiSelect"], div[class*="stSlider"] {
-        background-color: transparent !important;
-    }
-
-    /* Make buttons stand out */
+    /* Button styling */
     .stButton>button {
         background-color: #0b6b9d !important;
         color: #ffffff !important;
-        padding: 8px 18px !important;
+        padding: 10px 18px !important;
         border-radius: 10px !important;
-        font-weight: 600;
+        font-weight: 700;
     }
-    /* Secondary smaller download buttons */
-    button[kind="secondary"] {
-        background-color: #334155 !important;
-        color: #fff !important;
-    }
+    button[kind="secondary"] { background-color: #334155 !important; color: #fff !important; }
 
-    /* Reduce overly dark focus outlines that sometimes hide text */
-    *:focus {
-        outline: 2px solid rgba(11,107,157,0.12) !important;
-        box-shadow: none !important;
-    }
+    /* Reduce overly dark outlines that may hide text */
+    *:focus { outline: 2px solid rgba(11,107,157,0.12) !important; box-shadow: none !important; }
 
-    @media (max-width: 900px) {
-        h1 { font-size: 1.5rem; }
-    }
+    /* DataFrame header contrast */
+    .stDataFrame thead th { background-color: #f1f5f9 !important; color:#052038 !important; }
+
+    @media (max-width: 900px) { h1 { font-size: 1.5rem; } }
     </style>
     """,
     unsafe_allow_html=True,
 )
 
 # ---------------------------
-# Utilities
+# Utilities & model loader
 # ---------------------------
 def _try_load_model_from_path(pth: Path):
-    """Helper to attempt load with joblib then pickle."""
     try:
         return joblib.load(pth)
     except Exception:
@@ -190,7 +180,7 @@ def safe_encode_inputs(df: pd.DataFrame, encoders):
     return df_copy
 
 # ---------------------------
-# Load model
+# Load model (cached)
 # ---------------------------
 with st.spinner("Loading model..."):
     try:
@@ -203,36 +193,34 @@ with st.spinner("Loading model..."):
         sklearn_version = metadata.get("sklearn_version", None)
     except FileNotFoundError:
         st.sidebar.error("⚠️ Model not found. Upload `loan_approval_model.pkl` (or joblib) to the app folder.")
-        model = None
-        preprocessor = None
-        scaler = None
-        encoders = None
+        model = preprocessor = scaler = encoders = None
         metadata = {}
+        sklearn_version = None
     except Exception as e:
         st.sidebar.error("❌ Failed to load model. Check model file.")
         st.sidebar.exception(e)
-        model = None
-        preprocessor = None
-        scaler = None
-        encoders = None
+        model = preprocessor = scaler = encoders = None
         metadata = {}
+        sklearn_version = None
 
 # ---------------------------
-# Header (no noisy model text)
+# Header
 # ---------------------------
 st.markdown(f"<div style='text-align:center'><h1 style='margin-bottom:6px'>{APP_TITLE}</h1></div>", unsafe_allow_html=True)
-st.write("")  # spacer
+st.write("")
 
 # ---------------------------
-# Sidebar (controls + dev info)
+# Sidebar: icons for GitHub & LinkedIn
 # ---------------------------
 with st.sidebar:
     st.markdown("<div style='padding:6px 0'><h3 style='margin:0; color: #e6f6ff'>Controls</h3></div>", unsafe_allow_html=True)
     input_mode = st.radio("Input mode", ("Single", "Batch"), index=0)
     st.markdown("---")
-    st.markdown("**Developer / Links**")
-    st.markdown(f"[🔗 GitHub]({GITHUB_URL}) • [🔗 LinkedIn]({LINKEDIN_URL})")
-    # Show screenshot in dev expander for debugging
+    # Icon links (inline small SVGs)
+    github_svg = '<svg height="18" viewBox="0 0 16 16" width="18" xmlns="http://www.w3.org/2000/svg"><path fill="#7dd3fc" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.54 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.28.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.19 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>'
+    linkedin_svg = '<svg height="18" viewBox="0 0 34 34" width="18" xmlns="http://www.w3.org/2000/svg"><path fill="#7dd3fc" d="M34,3.5 C34,1.6 32.4,0 30.5,0 L3.5,0 C1.6,0 0,1.6 0,3.5 L0,30.5 C0,32.4 1.6,34 3.5,34 L30.5,34 C32.4,34 34,32.4 34,30.5 L34,3.5 Z M10.8,28.3 L6,28.3 L6,12.8 L10.8,12.8 L10.8,28.3 Z M8.4,10.6 C6.9,10.6 5.7,9.4 5.7,7.9 C5.7,6.4 6.9,5.1 8.4,5.1 C9.9,5.1 11.1,6.4 11.1,7.9 C11.1,9.4 9.9,10.6 8.4,10.6 Z M29.3,28.3 L24.5,28.3 L24.5,20.6 C24.5,18.6 23.2,17.6 21.7,17.6 C20.3,17.6 19.4,18.8 19.1,19.6 C19.1,19.6 19.1,28.3 19.1,28.3 L14.3,28.3 L14.3,12.8 L18.9,12.8 L18.9,14.6 C19.7,13.5 21.4,11.8 24.6,11.8 C29,11.8 29.3,15.2 29.3,19.6 L29.3,28.3 Z"/></svg>'
+    st.markdown(f"<div style='display:flex; gap:10px; align-items:center'><a href='{GITHUB_URL}' target='_blank' title='GitHub'>{github_svg}</a><a href='{LINKEDIN_URL}' target='_blank' title='LinkedIn'>{linkedin_svg}</a></div>", unsafe_allow_html=True)
+
     with st.expander("Model (developer) & Screenshot", expanded=False):
         if model is not None:
             st.write("Model class:", getattr(model, "__class__", type(model)).__name__)
@@ -241,10 +229,9 @@ with st.sidebar:
             st.json(metadata)
         else:
             st.write("Model not loaded.")
-        # show uploaded screenshot for debugging UI problems
         try:
             st.markdown("**Uploaded screenshot (for UI debugging):**")
-            st.image(SCREENSHOT_PATH, caption="User-uploaded screenshot", use_column_width=True)
+            st.image(SCREENSHOT_PATH, caption="User screenshot", use_column_width=True)
         except Exception:
             st.write("Screenshot not available in this environment.")
     st.markdown("---")
@@ -284,7 +271,7 @@ with st.form(key="single_form", clear_on_submit=False):
 st.markdown("</div>", unsafe_allow_html=True)
 
 # ---------------------------
-# Batch upload
+# Batch upload & input_df
 # ---------------------------
 input_df = None
 if input_mode == "Batch":
@@ -312,7 +299,7 @@ else:
 st.write("---")
 
 # ---------------------------
-# Model prep & predict
+# Prepare & predict helpers
 # ---------------------------
 def prepare_for_model(df: pd.DataFrame):
     X = df.copy()
@@ -340,7 +327,9 @@ def build_results_df(input_df, preds, probs=None):
         results["Approval_Confidence"] = (probs * 100).round(2)
     return results
 
-# run predictions
+# ---------------------------
+# Run prediction
+# ---------------------------
 if (input_mode == "Batch" and 'uploaded' in locals() and uploaded is not None and st.button("Run Batch Predictions")) or (input_mode == "Single" and submitted):
     with st.spinner("Predicting..."):
         try:
@@ -386,7 +375,7 @@ if (input_mode == "Batch" and 'uploaded' in locals() and uploaded is not None an
                 csv_bytes = df_to_download_bytes(results)
                 st.download_button("⬇️ Download predictions (CSV)", data=csv_bytes, file_name=f"loan_predictions_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.csv", mime="text/csv")
 
-                # optional approximate feature importances
+                # approximate feature importances
                 try:
                     fi = None
                     if hasattr(model, "feature_importances_"):
