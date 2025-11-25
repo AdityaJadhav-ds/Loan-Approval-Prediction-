@@ -84,7 +84,7 @@ This is the **perfect portfolio project** for Data Science, ML Engineer, and AI 
 
 ### 1️⃣ Clone
 ```bash
-git clone https://github.com/AdityaJadhav-ds/loan-approval-prediction.git
+git clone https://github.com/AdityaJadhav-ds/Loan-Approval-Prediction-.git
 cd loan-approval-prediction
 
 
